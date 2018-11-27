@@ -2,6 +2,7 @@
 """
 Replace outdated aws creds with new creds.
 """
+import argparse
 import collections
 import configparser
 import datetime
@@ -18,6 +19,10 @@ KEY_TTL = datetime.timedelta(days=96)
 AwsKey = collections.namedtuple('AwsKey', 'key created')
 
 
+def utcnow():
+    return datetime.datetime.utcnow().replace(tzinfo=pytz.UTC)
+
+
 def get_keys():
     client = boto3.client('iam')
     paginator = client.get_paginator('list_access_keys')
@@ -26,7 +31,7 @@ def get_keys():
 
 
 def get_expired_keys():
-    cutoff = datetime.datetime.utcnow().replace(tzinfo=pytz.UTC) - KEY_TTL
+    cutoff = utcnow() - KEY_TTL
     for key in get_keys():
         if key.created < cutoff:
             yield key
@@ -70,5 +75,57 @@ def replace_expired_keys():
         credsfile.write(file)
 
 
+def tabulate(rows, *, header=None):
+    all_rows = data_rows = list(rows)
+    if header is not None:
+        all_rows = [header] + all_rows
+    lengths = [max(map(len, col)) for col in zip(*all_rows)]
+    lines = [
+        '|'.join(f" {field:<{length}} " for field, length in zip(row, lengths))
+        for row in data_rows
+    ]
+    if header is not None:
+        lines = [
+            '|'.join(f" {field:^{length}} " for field, length in zip(header, lengths)),
+            '+'.join('-' * (length + 2) for length in lengths),
+        ] + lines
+    return '\n'.join(lines)
+
+
+def format_timedelta(timedelta):
+    if timedelta < datetime.timedelta():
+        return 'EXPIRED'
+    days = timedelta.days
+    return f"{days} days" if days != 1 else "1 day"
+
+
+def view_keys():
+    now = utcnow()
+    table = tabulate(
+        header=['Key', 'Created', 'Expires'],
+        rows=[
+            (key.key, str(key.created.date()), format_timedelta(KEY_TTL - (now - key.created)))
+            for key in get_keys()
+        ],
+    )
+    print(table)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="manage aws creds")
+
+    subparsers = parser.add_subparsers(dest='cmd')
+    subparsers.required = True
+
+    rotate_parser = subparsers.add_parser('rotate', help="rotate aws creds")
+    rotate_parser.set_defaults(func=replace_expired_keys)
+
+    view_parser = subparsers.add_parser('view', help="view aws creds")
+    view_parser.set_defaults(func=view_keys)
+
+    args = parser.parse_args()
+    args.func()
+
+
 if __name__ == '__main__':
-    replace_expired_keys()
+    main()
