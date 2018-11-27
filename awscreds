@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Replace outdated aws creds with new creds.
+Tool to view and rotate personal aws credentials.
 """
 import argparse
 import collections
@@ -60,6 +60,7 @@ def replace_config(config, old_key, new_key, new_secret_key):
 
 
 def replace_expired_keys():
+    """Generate a new access key, and update local config with this key."""
     credsfile = configparser.ConfigParser()
     credsfile.read(CREDS)
     for expired_key in get_expired_keys():
@@ -117,7 +118,10 @@ def main():
     subparsers = parser.add_subparsers(dest='cmd')
     subparsers.required = True
 
-    rotate_parser = subparsers.add_parser('rotate', help="rotate aws creds")
+    rotate_parser = subparsers.add_parser(
+        'rotate',
+        help="generate a new access key, and update local config with the key",
+    )
     rotate_parser.set_defaults(func=replace_expired_keys)
 
     view_parser = subparsers.add_parser('view', help="view aws creds")
