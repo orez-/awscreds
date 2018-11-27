@@ -1,0 +1,74 @@
+#!/usr/bin/env python3
+"""
+Replace outdated aws creds with new creds.
+"""
+import collections
+import configparser
+import datetime
+import getpass
+import itertools
+import os.path
+
+import boto3
+import pytz
+
+
+CREDS = os.path.expanduser('~/.aws/credentials')
+KEY_TTL = datetime.timedelta(days=96)
+AwsKey = collections.namedtuple('AwsKey', 'key created')
+
+
+def get_keys():
+    client = boto3.client('iam')
+    paginator = client.get_paginator('list_access_keys')
+    pager = paginator.paginate(UserName=getpass.getuser())
+    return itertools.starmap(AwsKey, pager.search('AccessKeyMetadata[].[AccessKeyId, CreateDate]'))
+
+
+def get_expired_keys():
+    cutoff = datetime.datetime.utcnow().replace(tzinfo=pytz.UTC) - KEY_TTL
+    for key in get_keys():
+        if key.created < cutoff:
+            yield key
+
+
+def create_key():
+    client = boto3.client('iam')
+    return client.create_access_key(UserName=getpass.getuser())['AccessKey']
+
+
+def delete_key(key):
+    client = boto3.client('iam')
+    client.delete_access_key(
+        UserName=getpass.getuser(),
+        AccessKeyId=key,
+    )
+
+
+def replace_config(config, old_key, new_key, new_secret_key):
+    for section_name in config.sections():
+        section = config[section_name]
+        if section.get('aws_access_key_id') == old_key:
+            section['aws_access_key_id'] = new_key
+            section['aws_secret_access_key'] = new_secret_key
+    return config
+
+
+def replace_expired_keys():
+    credsfile = configparser.ConfigParser()
+    credsfile.read(CREDS)
+    for expired_key in get_expired_keys():
+        new_key_data = create_key()
+        replace_config(
+            config=credsfile,
+            old_key=expired_key.key,
+            new_key=new_key_data['AccessKeyId'],
+            new_secret_key=new_key_data['SecretAccessKey'],
+        )
+        delete_key(expired_key.key)
+    with open(CREDS, 'w') as file:
+        credsfile.write(file)
+
+
+if __name__ == '__main__':
+    replace_expired_keys()
