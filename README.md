@@ -1,6 +1,8 @@
 # awscreds
 🎢 Tool to view and rotate personal aws credentials.
 
+First, `aws-mfa`. Then:
+
 ```
 usage: awscreds [-h] {rotate,view} ...
 
@@ -16,3 +18,6 @@ positional arguments:
 All configuration is currently hardcoded.
 
 A tool like this probably already exists, and it's possible AWS offers it directly, but now here's my take on it ᖍ(ツ)ᖌ
+
+Pro tip: add the repo directory to your PATH to use `awscreds` from anywhere 🧙‍♀️
+
